@@ -935,7 +935,31 @@ return { id: frame.id };"></textarea>
         var count = 0;
         if (message.data && message.data.variables) count = message.data.variables.length;
         log('✓ Loaded ' + count + ' design variables', 'success');
-      } else if (message.id) {
+      } else if (message.method === 'EXECUTE_CODE') {
+        // Incoming execute request from bridge server - forward to plugin sandbox
+        var code = message.params && message.params.code;
+        var timeout = (message.params && message.params.timeout) || 30000;
+        var requestId = message.id;
+
+        if (!code) {
+          sendWsResponse(requestId, null, 'Missing code parameter');
+          return;
+        }
+
+        log('→ Executing code from server (' + code.length + ' bytes)', 'info');
+
+        // Forward to plugin sandbox
+        sendPluginCommand('EXECUTE_CODE', { code: code, requestId: requestId }, timeout)
+          .then(function(result) {
+            sendWsResponse(requestId, result, null);
+            log('✓ Code execution completed', 'success');
+          })
+          .catch(function(err) {
+            sendWsResponse(requestId, null, err.message);
+            log('✗ Code execution failed: ' + err.message, 'error');
+          });
+      } else if (message.id && !message.method) {
+        // Response to our request
         const request = window.__figmaPendingRequests.get(message.id);
         if (request) {
           if (request.timeoutId) clearTimeout(request.timeoutId);
@@ -949,6 +973,19 @@ return { id: frame.id };"></textarea>
           window.__figmaPendingRequests.delete(message.id);
         }
       }
+    }
+
+    function sendWsResponse(requestId, result, error) {
+      if (activeConnections.length === 0) return;
+
+      var response = { id: requestId };
+      if (error) {
+        response.error = error;
+      } else {
+        response.result = result;
+      }
+
+      activeConnections[0].ws.send(JSON.stringify(response));
     }
 
     function sendToWs(method, params) {
