@@ -33,8 +33,10 @@ if _CONV_ROOT not in sys.path:
     sys.path.insert(0, _CONV_ROOT)
 
 from ir.nodes import (
+    AlignItems,
     GradientType,
     ImageFillMode,
+    JustifyContent,
     LayoutMode,
     NodeType,
     SizingMode,
@@ -130,6 +132,29 @@ def _text_align_to_pencil(align: TextAlign) -> str:
         TextAlign.JUSTIFY: '"justify"',
     }
     return mapping.get(align, '"left"')
+
+
+def _justify_to_pencil(justify: JustifyContent) -> str:
+    """Convert JustifyContent to Pencil justifyContent string."""
+    mapping = {
+        JustifyContent.START: '"start"',
+        JustifyContent.CENTER: '"center"',
+        JustifyContent.END: '"end"',
+        JustifyContent.SPACE_BETWEEN: '"space-between"',
+        JustifyContent.SPACE_AROUND: '"space-around"',
+    }
+    return mapping.get(justify, '"start"')
+
+
+def _align_to_pencil(align: AlignItems) -> str:
+    """Convert AlignItems to Pencil alignItems string."""
+    mapping = {
+        AlignItems.START: '"start"',
+        AlignItems.CENTER: '"center"',
+        AlignItems.END: '"end"',
+        AlignItems.STRETCH: '"stretch"',
+    }
+    return mapping.get(align, '"start"')
 
 
 def _build_fill(fill: Union[UNSolidFill, UNGradientFill, UNImageFill]) -> str:
@@ -291,6 +316,13 @@ def _build_node_props(node: UNNode, is_root: bool = False) -> str:
     if node.type == NodeType.FRAME:
         # Layout
         props.append(f'"layout": {_layout_mode_to_pencil(node.layout if node.layout else LayoutMode.NONE)}')
+
+        # Justify content and align items (only for flex layouts)
+        if node.layout in (LayoutMode.HORIZONTAL, LayoutMode.VERTICAL):
+            if node.justify_content and node.justify_content != JustifyContent.START:
+                props.append(f'"justifyContent": {_justify_to_pencil(node.justify_content)}')
+            if node.align_items and node.align_items != AlignItems.START:
+                props.append(f'"alignItems": {_align_to_pencil(node.align_items)}')
 
         # Gap
         if node.gap:
