@@ -1302,6 +1302,33 @@ def _get_style(elem: _Element) -> Dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+def _gradient_dict_to_fill(grad: Dict[str, Any]) -> UNGradientFill:
+    """Convert a parsed gradient dict to UNGradientFill."""
+    # Map gradient type string to enum
+    type_map = {
+        "linear": GradientType.LINEAR,
+        "radial": GradientType.RADIAL,
+        "angular": GradientType.ANGULAR,
+        "diamond": GradientType.DIAMOND,
+    }
+    gradient_type = type_map.get(grad.get("type", "linear"), GradientType.LINEAR)
+
+    # Convert stops
+    stops = []
+    for stop in grad.get("stops", []):
+        color_hex = stop.get("color", "#000000FF")
+        color = UNColor.from_hex(color_hex)
+        position = stop.get("position", 0.0)
+        stops.append(UNGradientStop(color=color, position=position))
+
+    return UNGradientFill(
+        gradient_type=gradient_type,
+        rotation=grad.get("rotation", 180.0),
+        stops=stops,
+        opacity=grad.get("opacity", 1.0),
+    )
+
+
 def _extract_fills(css: Dict[str, str], node: UNNode) -> None:
     """Parse background/fill-related CSS properties and attach fills to node."""
     bg = css.get("background") or css.get("backgroundColor") or css.get("fill")
@@ -1311,7 +1338,7 @@ def _extract_fills(css: Dict[str, str], node: UNNode) -> None:
         # Try gradient first
         grad = parse_css_gradient(bg_image)
         if grad:
-            node.fills.append(grad)
+            node.fills.append(_gradient_dict_to_fill(grad))
             return
         # Try background-image URL  →  image fill
         m = re.search(r'url\(["\']?(.+?)["\']?\)', bg_image)
@@ -1324,7 +1351,7 @@ def _extract_fills(css: Dict[str, str], node: UNNode) -> None:
         if "gradient" in bg:
             grad = parse_css_gradient(bg)
             if grad:
-                node.fills.append(grad)
+                node.fills.append(_gradient_dict_to_fill(grad))
                 return
         # Solid color - parse to hex string, then convert to UNColor
         try:
@@ -1609,14 +1636,26 @@ def _element_to_node(
             pass
         else:
             ts = _extract_text_style(css, tag)
+            # For text nodes: use HUG unless CSS explicitly specifies a dimension
+            # (don't inherit parent dimensions for auto-sizing text)
+            text_width = UNSize.hug()
+            text_height = UNSize.hug()
+            if width_css and str(width_css).lower() not in ("auto", "", "none"):
+                text_width = UNSize.fixed(width)
+            elif width_is_fill:
+                text_width = UNSize.fill()
+            if height_css and str(height_css).lower() not in ("auto", "", "none"):
+                text_height = UNSize.fixed(height)
+            elif height_is_fill:
+                text_height = UNSize.fill()
             node = UNNode(
                 type=NodeType.TEXT,
                 id=_next_node_id(),
                 name=elem.props.get("id", elem.props.get("data-name", tag)),
                 x=x,
                 y=y,
-                width=UNSize.hug() if not width else UNSize.fixed(width),
-                height=UNSize.hug() if not height else UNSize.fixed(height),
+                width=text_width,
+                height=text_height,
                 text_content=text_content,
                 text_style=ts,
                 opacity=opacity,
