@@ -781,6 +781,21 @@ The bug depends on relative timing:
 - **Fast plugin / slow Python**: Fails (response beats registration)
 - Network latency and event loop scheduling affect outcome
 
+#### Verified: Receive Loop Is Correct
+
+Analysis of `_ws_receive_loop()` (lines 381-431) and `_handle_ws_message()` (lines 433-465) confirms these function correctly:
+
+| Component | Lines | Status | Notes |
+|-----------|-------|--------|-------|
+| Frame buffering | 381-431 | ✅ Correct | Incomplete frames properly buffered |
+| Close frame handling | 408-415 | ✅ Correct | Opcode 0x08 handled |
+| Message dispatch | 433-465 | ✅ Correct | Routes to `_handle_ws_message()` |
+| Request ID extraction | 447-448 | ✅ Correct | `data.get("id")` |
+| Pending request lookup | 456 | ✅ Correct | `if request_id in self.pending_requests` |
+| Future resolution | 459-460 | ✅ Correct | `pending.future.set_result(data)` |
+
+**Conclusion:** The receive path is not the issue. The root cause is isolated to `_send_to_plugin()` registering the pending request **after** sending the frame.
+
 #### Fix Required
 
 Swap the order of operations: **register the pending request BEFORE sending the frame**:
